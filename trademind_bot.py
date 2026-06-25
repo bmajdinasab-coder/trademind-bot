@@ -1,7 +1,7 @@
 import os
 import json
 import re
-import anthropic
+import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -9,11 +9,10 @@ from telegram.ext import (
 )
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 WALLET = "TS19Z7pisbGsCLiTg7NdMLKKaAjHf7HYkN"
 PRICE = "$2 USDT (TRC20)"
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 PAIR, DIRECTION, ENTRY, EXIT, SL, SIZE, EMOTION, REASON = range(8)
 FREE_FILE = "free_used.json"
 PAID_FILE = "paid_users.json"
@@ -80,12 +79,19 @@ Trade:
 - Reason: {data.get('reason', 'Not provided')}
 - P&L: {pnl}%"""
 
-    msg = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1000,
-        messages=[{"role": "user", "content": prompt}]
+    response = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": "llama3-70b-8192",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 1000
+        }
     )
-    text = msg.content[0].text
+    text = response.json()["choices"][0]["message"]["content"]
     try:
         match = re.search(r'\{[\s\S]*\}', text)
         return json.loads(match.group()), pnl
