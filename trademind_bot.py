@@ -10,7 +10,7 @@ from telegram.ext import (
 )
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-GROQ_API_KEY = os.environ["GROQ_API_KEY"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 WALLET = "TS19Z7pisbGsCLiTg7NdMLKKaAjHf7HYkN"
 PRICE = "$2 USDT (TRC20)"
 
@@ -82,33 +82,29 @@ Trade:
 
     try:
         response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type": "application/json"
-            },
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
             json={
-                "model": "llama3-70b-8192",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 1000
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"maxOutputTokens": 1000}
             },
             timeout=30
         )
         response.raise_for_status()
-        text = response.json()["choices"][0]["message"]["content"]
+        text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
         match = re.search(r'\{[\s\S]*\}', text)
         if not match:
-            print("No JSON found in Groq response")
+            print("No JSON found in Gemini response")
             return None, pnl
         return json.loads(match.group()), pnl
     except requests.exceptions.Timeout:
-        print("Groq API timeout")
+        print("Gemini API timeout")
         return None, pnl
     except requests.exceptions.HTTPError as e:
-        print(f"Groq HTTP error: {e} - {response.text}")
+        print(f"Gemini HTTP error: {e} - {response.text}")
         return None, pnl
     except Exception as e:
-        print(f"Groq error: {e}")
+        print(f"Gemini error: {e}")
         return None, pnl
 
 def format_result(result, data, pnl):
