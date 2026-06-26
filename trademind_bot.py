@@ -79,23 +79,35 @@ Trade:
 - Reason: {data.get('reason', 'Not provided')}
 - P&L: {pnl}%"""
 
-    response = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": "llama3-70b-8192",
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 1000
-        }
-    )
-    text = response.json()["choices"][0]["message"]["content"]
     try:
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "llama3-70b-8192",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 1000
+            },
+            timeout=30
+        )
+        response.raise_for_status()
+        text = response.json()["choices"][0]["message"]["content"]
         match = re.search(r'\{[\s\S]*\}', text)
+        if not match:
+            print("No JSON found in Groq response")
+            return None, pnl
         return json.loads(match.group()), pnl
-    except:
+    except requests.exceptions.Timeout:
+        print("Groq API timeout")
+        return None, pnl
+    except requests.exceptions.HTTPError as e:
+        print(f"Groq HTTP error: {e} - {response.text}")
+        return None, pnl
+    except Exception as e:
+        print(f"Groq error: {e}")
         return None, pnl
 
 def format_result(result, data, pnl):
@@ -207,14 +219,18 @@ async def get_emotion(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def get_reason(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     val = update.message.text
     ctx.user_data["reason"] = "Not provided" if val.lower() == "skip" else val
-    await update.message.reply_text("⏳ Analyzing your trade...")
+    await update.message.reply_text("⏳ Analyzing your trade... (may take up to 30 seconds)")
     result, pnl = analyze_trade(ctx.user_data)
     if not result:
-        await update.message.reply_text("❌ Analysis failed. Try /analyze again.")
+        await update.message.reply_text("❌ Analysis failed. The AI service may be busy. Please try /analyze again.")
         return ConversationHandler.END
     mark_free_used(update.effective_user.id)
     kb = [[InlineKeyboardButton("🔄 Analyze Another", callback_data="new_trade")]]
-    await update.message.reply_text(format_result(result, ctx.user_data, pnl), parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text(
+        format_result(result, ctx.user_data, pnl),
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
     return ConversationHandler.END
 
 async def how_to_pay_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -266,6 +282,7 @@ def main():
             REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_reason)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False,
     )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("paid", paid_cmd))
@@ -274,7 +291,7 @@ def main():
     app.add_handler(CallbackQueryHandler(how_to_pay_cb, pattern="^how_to_pay$"))
     app.add_handler(CallbackQueryHandler(new_trade_cb, pattern="^new_trade$"))
     print("TradeMind Bot running...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
