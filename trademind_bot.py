@@ -1,4 +1,5 @@
 import os
+import time
 import json
 import re
 import requests
@@ -294,4 +295,5 @@ def main():
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == "__main__":
+    time.sleep(5)
     main()
