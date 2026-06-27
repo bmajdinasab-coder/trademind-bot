@@ -3,6 +3,7 @@ import time
 import json
 import re
 import requests
+import google.generativeai as genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -11,6 +12,7 @@ from telegram.ext import (
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+genai.configure(api_key=GEMINI_API_KEY)
 WALLET = "TS19Z7pisbGsCLiTg7NdMLKKaAjHf7HYkN"
 PRICE = "$2 USDT (TRC20)"
 
@@ -81,28 +83,14 @@ Trade:
 - P&L: {pnl}%"""
 
     try:
-        response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={GEMINI_API_KEY}",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"maxOutputTokens": 1000}
-            },
-            timeout=30
-        )
-        response.raise_for_status()
-        text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        response = model.generate_content(prompt)
+        text = response.text
         match = re.search(r'\{[\s\S]*\}', text)
         if not match:
             print("No JSON found in Gemini response")
             return None, pnl
         return json.loads(match.group()), pnl
-    except requests.exceptions.Timeout:
-        print("Gemini API timeout")
-        return None, pnl
-    except requests.exceptions.HTTPError as e:
-        print(f"Gemini HTTP error: {e} - {response.text}")
-        return None, pnl
     except Exception as e:
         print(f"Gemini error: {e}")
         return None, pnl
